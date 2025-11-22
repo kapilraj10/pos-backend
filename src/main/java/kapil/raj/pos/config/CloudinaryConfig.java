@@ -1,36 +1,31 @@
 package kapil.raj.pos.config;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-
 @Configuration
-public class AWSConfig {
+public class CloudinaryConfig {
 
-    @Value("${aws.access.key}")
-private String accessKey;
+    @Value("${cloudinary.cloud-name}")
+    private String cloudName;
 
-@Value("${aws.secret.key}")
-private String secretKey;
+    @Value("${cloudinary.api-key}")
+    private String apiKey;
 
-@Value("${aws.region}")
-private String region;
-
+    @Value("${cloudinary.api-secret}")
+    private String apiSecret;
 
     @Bean
-    public S3Client s3Client() {
-        return S3Client.builder()
-                .region(Region.of(region))
-                .credentialsProvider(
-                        StaticCredentialsProvider.create(
-                                AwsBasicCredentials.create(accessKey, secretKey)
-                        )
+    public Cloudinary cloudinary() {
+        return new Cloudinary(
+                ObjectUtils.asMap(
+                        "cloud_name", cloudName,
+                        "api_key", apiKey,
+                        "api_secret", apiSecret
                 )
-                .build();
+        );
     }
 }
