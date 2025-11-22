@@ -48,7 +48,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             logger.warn("🔍 {} {} | Auth Header: {} | Content-Type: {}", 
                 method,
                 uri,
-                authorizationHeader != null ? "Present ✅" : "MISSING ❌",
+                authorizationHeader != null ? "Present " : "MISSING ",
                 request.getContentType());
         }
 
@@ -56,30 +56,29 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             jwt = authorizationHeader.substring(7);
             try {
                 email = jwtUtil.extractUsername(jwt);
-                logger.info("✅ Token valid for user: {}", email);
+                logger.info(" Token valid for user: {}", email);
             } catch (io.jsonwebtoken.ExpiredJwtException e) {
-                logger.warn("⚠️ Token EXPIRED for: {} | Expired at: {} | Endpoint: {}", 
+                logger.warn(" Token EXPIRED for: {} | Expired at: {} | Endpoint: {}", 
                     e.getClaims().getSubject(), 
                     e.getClaims().getExpiration(),
                     uri);
                 
-                // Don't block public endpoints even with expired token
+                
                 if (uri.matches(".*/items$|.*/categories$")) {
-                    logger.info("✅ Allowing public endpoint access despite expired token: {}", uri);
+                    logger.info(" Allowing public endpoint access despite expired token: {}", uri);
                 } else {
-                    // Set response header to indicate expired token for admin endpoints
+                  
                     response.setHeader("X-Token-Expired", "true");
                 }
-                // Clear jwt to prevent further processing but allow request to continue
                 jwt = null;
                 email = null;
             } catch (Exception e) {
-                logger.error("❌ Token extraction failed: {}", e.getMessage());
+                logger.error(" Token extraction failed: {}", e.getMessage());
                 jwt = null;
                 email = null;
             }
         } else if (uri.contains("/admin/")) {
-            logger.error("❌ Admin endpoint accessed without Bearer token: {}", uri);
+            logger.error(" Admin endpoint accessed without Bearer token: {}", uri);
         }
 
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
@@ -87,34 +86,31 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 UserDetails userDetails = userDetailService.loadUserByUsername(email);
 
                 if (jwtUtil.validateToken(jwt, userDetails)) {
-                    // Extract roles from JWT token
                     List<String> roles = jwtUtil.extractRoles(jwt);
                     List<SimpleGrantedAuthority> authorities;
                     
-                    // If JWT has roles, use them; otherwise fall back to UserDetails
                     if (roles != null && !roles.isEmpty()) {
                         authorities = roles.stream()
                                 .map(SimpleGrantedAuthority::new)
                                 .collect(Collectors.toList());
-                        logger.info("✅ Authorities from JWT: {}", authorities);
+                        logger.info(" Authorities from JWT: {}", authorities);
                     } else {
-                        // Fallback: use roles from UserDetails (database)
                         authorities = userDetails.getAuthorities().stream()
                                 .map(auth -> new SimpleGrantedAuthority(auth.getAuthority()))
                                 .collect(Collectors.toList());
-                        logger.info("✅ Authorities from DB: {}", authorities);
+                        logger.info(" Authorities from DB: {}", authorities);
                     }
                     
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    logger.info("✅ Authentication set successfully for: {}", email);
+                    logger.info(" Authentication set successfully for: {}", email);
                 } else {
-                    logger.error("❌ Token validation failed for: {}", email);
+                    logger.error(" Token validation failed for: {}", email);
                 }
             } catch (Exception e) {
-                logger.error("❌ Authentication failed: {}", e.getMessage());
+                logger.error(" Authentication failed: {}", e.getMessage());
             }
         }
 

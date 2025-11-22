@@ -79,6 +79,6 @@ public class JwtUtil {
         if (rolesObj instanceof List) {
             return (List<String>) rolesObj;
         }
-        return List.of(); // Return empty list if roles are missing
+        return List.of(); 
     }
 }

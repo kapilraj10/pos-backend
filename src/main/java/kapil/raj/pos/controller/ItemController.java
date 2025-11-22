@@ -28,76 +28,51 @@ public class ItemController {
 
     private final ItemService itemService;
 
-    // -----------------------
-    // DEBUG - Check Authentication Status
-    // -----------------------
-    @GetMapping("/admin/auth-check")
-    public String checkAuth() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return "No authentication found!";
-        return "User: " + auth.getName() + " | Authorities: " + auth.getAuthorities();
-    }
-
-    // -----------------------
-    // POST - Admin only
-    // -----------------------
-@PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping("/admin/items")
     @ResponseStatus(HttpStatus.CREATED)
     public ItemResponse addItem(
             @RequestPart("item") String itemString,
-            @RequestPart("file") MultipartFile file
+            @RequestPart(value = "file", required = false) MultipartFile file
     ) {
-        // DEBUG: Log authentication info
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        System.out.println("🔍 POST /admin/items - Auth: " + (auth != null ? auth.getName() : "NULL") + 
-                          " | Authorities: " + (auth != null ? auth.getAuthorities() : "NONE"));
-        
         ObjectMapper objectMapper = new ObjectMapper();
         ItemRequest itemRequest;
-
         try {
-            // Convert JSON string into ItemRequest object
             itemRequest = objectMapper.readValue(itemString, ItemRequest.class);
 
-            // Call service to add item
+            // Validation
+            if (itemRequest.getName() == null || itemRequest.getName().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item name is required");
+            }
+            if (itemRequest.getPrice() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item price must be > 0");
+            }
+            if (itemRequest.getCategoryId() == null || itemRequest.getCategoryId().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category is required");
+            }
+
             return itemService.add(itemRequest, file);
 
-        } catch (JsonProcessingException ex) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Invalid JSON format in 'item' body"
-            );
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid JSON format in 'item'");
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
         }
     }
 
-    // -----------------------
-    // GET - Public
-    // -----------------------
     @GetMapping("/items")
     public List<ItemResponse> getItems() {
         return itemService.fetchItems();
     }
 
-    // -----------------------
-    // DELETE - Admin only
-    // -----------------------
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/admin/items/{itemId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteItem(@PathVariable String itemId) {
-        // DEBUG: Log authentication info
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        System.out.println("🔍 DELETE /admin/items/" + itemId + " - Auth: " + (auth != null ? auth.getName() : "NULL") + 
-                          " | Authorities: " + (auth != null ? auth.getAuthorities() : "NONE"));
-        
         try {
             itemService.deleteItem(itemId);
         } catch (Exception e) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Item not found: " + itemId
-            );
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not found: " + itemId);
         }
     }
 }

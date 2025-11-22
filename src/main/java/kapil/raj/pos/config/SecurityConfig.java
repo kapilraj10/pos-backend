@@ -8,7 +8,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -35,43 +34,33 @@ public class SecurityConfig {
     private final AppUserDetailService appUserDetailService;
     private final JwtRequestFilter jwtRequestFilter;
 
-    // ================== Security Filter Chain ==================
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-                // Enable CORS
-                .cors(Customizer.withDefaults())
-                // Disable CSRF for stateless REST APIs
-                .csrf(AbstractHttpConfigurer::disable)
-                // Authorization rules
-                .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
-                        .requestMatchers("/login", "/encode").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/categories", "/items").permitAll()
-                        // Admin-only endpoints - context path is already /api/v1/pos
-                        .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
-                        // All other requests must be authenticated
-                        .anyRequest().authenticated()
-                )
-                // Stateless session management (JWT)
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                );
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(AbstractHttpConfigurer::disable)
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/login", "/encode").permitAll()
+                .requestMatchers(HttpMethod.GET, "/categories", "/items").permitAll()
+                .requestMatchers(HttpMethod.POST, "/categories", "/items").hasAuthority("ROLE_ADMIN")
+                .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            );
 
-        // Add JWT filter before UsernamePasswordAuthenticationFilter
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    // ================== Password Encoder ==================
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // ================== Authentication Manager ==================
     @Bean
     public AuthenticationManager authenticationManager() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
@@ -80,7 +69,6 @@ public class SecurityConfig {
         return new ProviderManager(authProvider);
     }
 
-    // ================== CORS Filter ==================
     @Bean
     public CorsFilter corsFilter() {
         return new CorsFilter(corsConfigurationSource());
@@ -88,15 +76,10 @@ public class SecurityConfig {
 
     private UrlBasedCorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Frontend URL
         config.setAllowedOrigins(List.of("http://localhost:5173"));
-        // Allowed HTTP methods
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        // Allow all headers
         config.setAllowedHeaders(List.of("*"));
-        // Allow credentials (cookies, authorization headers)
         config.setAllowCredentials(true);
-        // Cache preflight requests
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -104,4 +87,3 @@ public class SecurityConfig {
         return source;
     }
 }
-
