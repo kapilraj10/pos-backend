@@ -1,5 +1,14 @@
 package kapil.raj.pos.service.impl;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import kapil.raj.pos.entity.OrderEntity;
 import kapil.raj.pos.entity.OrderItemEntity;
 import kapil.raj.pos.io.OrderRequest;
@@ -8,10 +17,6 @@ import kapil.raj.pos.io.PaymentDetails;
 import kapil.raj.pos.io.PaymentMethod;
 import kapil.raj.pos.repository.OrderEntityRepository;
 import kapil.raj.pos.service.OrderService;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -23,53 +28,90 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
     public OrderResponse createOrder(OrderRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body cannot be null");
+        }
 
-        // Convert request to OrderEntity
-        OrderEntity newOrder = convertToOrderEntity(request);
+        if (request.getCartItems() == null || request.getCartItems().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cart items cannot be empty");
+        }
 
-        // Set payment details based on payment method
+        PaymentMethod paymentMethod = parsePaymentMethod(request.getPaymentMethod());
+
+        // Compute subtotal if not provided
+        double computedSubtotal = request.getCartItems().stream()
+                .mapToDouble(item -> item.getPrice() * item.getQuantity())
+                .sum();
+
+        Double subTotal = request.getSubTotal() != null ? request.getSubTotal() : computedSubtotal;
+        Double tax = request.getTax() != null ? request.getTax() : 0.0;
+        Double grandTotal = request.getGrandTotal() != null ? request.getGrandTotal() : subTotal + tax;
+
+        // Create order entity
+        OrderEntity order = OrderEntity.builder()
+                .customerName(request.getCustomerName())
+                .phoneNumber(request.getPhoneNumber())
+                .subTotal(subTotal)
+                .tax(tax)
+                .grandTotal(grandTotal)
+                .paymentMethod(paymentMethod)
+                .build();
+
+        // Payment details
         PaymentDetails payment = new PaymentDetails();
-        payment.setStatus(
-                newOrder.getPaymentMethod() == PaymentMethod.CASH
-                        ? PaymentDetails.PaymentStatus.COMPLETED
-                        : PaymentDetails.PaymentStatus.PENDING
-        );
-        newOrder.setPaymentDetails(payment);
+        payment.setStatus(paymentMethod == PaymentMethod.CASH
+                ? PaymentDetails.PaymentStatus.COMPLETED
+                : PaymentDetails.PaymentStatus.PENDING);
+        order.setPaymentDetails(payment);
 
-        // Convert cart items
+        // Map order items
         List<OrderItemEntity> orderItems = request.getCartItems().stream()
                 .map(this::convertToOrderItem)
                 .collect(Collectors.toList());
-        newOrder.setItems(orderItems);
+        order.setItems(orderItems);
 
-        // Save order to database
-        newOrder = orderEntityRepository.save(newOrder);
+        order = orderEntityRepository.save(order);
 
-        // Convert saved order to response DTO
-        return convertToResponse(newOrder);
+        return convertToResponse(order);
     }
 
-    private OrderEntity convertToOrderEntity(OrderRequest request) {
-        // Convert string to PaymentMethod enum safely
-        PaymentMethod paymentMethod;
-        try {
-            paymentMethod = PaymentMethod.valueOf(request.getPaymentMethod().toUpperCase());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            paymentMethod = PaymentMethod.CASH; // default if invalid or null
+    @Override
+    @Transactional
+    public void deleteOrder(String orderId) {
+        Long id = parseId(orderId);
+        if (!orderEntityRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Order with id " + orderId + " not found");
         }
+        orderEntityRepository.deleteById(id);
+    }
 
-        return OrderEntity.builder()
-                .customerName(request.getCustomerName())
-                .phoneNumber(request.getPhoneNumber())
-                .subTotal(request.getSubTotal())
-                .tax(request.getTax())
-                .grandTotal(request.getGrandTotal())
-                .paymentMethod(paymentMethod)
-                .build();
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getLatestOrders() {
+        return orderEntityRepository.findTop10ByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    private PaymentMethod parsePaymentMethod(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return PaymentMethod.CASH;
+        }
+        try {
+            return PaymentMethod.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported payment method: " + raw);
+        }
     }
 
     private OrderItemEntity convertToOrderItem(OrderRequest.OrderItemRequest cartItem) {
+        if (cartItem.getQuantity() <= 0 || cartItem.getPrice() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid item quantity or price for item: " + cartItem.getName());
+        }
         return OrderItemEntity.builder()
                 .name(cartItem.getName())
                 .quantity(cartItem.getQuantity())
@@ -78,7 +120,10 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse convertToResponse(OrderEntity order) {
-        List<OrderResponse.OrderItemResponse> items = order.getItems().stream()
+        List<OrderResponse.OrderItemResponse> items = order.getItems() == null
+                ? List.of()
+                : order.getItems().stream()
+                .filter(Objects::nonNull)
                 .map(item -> OrderResponse.OrderItemResponse.builder()
                         .id(item.getId())
                         .name(item.getName())
@@ -94,23 +139,18 @@ public class OrderServiceImpl implements OrderService {
                 .subtotal(order.getSubTotal())
                 .tax(order.getTax())
                 .grandTotal(order.getGrandTotal())
-                .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod().name() : null) // FIXED
+                .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod().name() : null)
                 .paymentDetails(order.getPaymentDetails())
                 .items(items)
                 .createdAt(order.getCreatedAt())
                 .build();
     }
 
-    @Override
-    public void deleteOrder(String orderId) {
-        // Delete by order entity ID (assuming it's numeric)
-        orderEntityRepository.deleteById(Long.parseLong(orderId));
-    }
-
-    @Override
-    public List<OrderResponse> getLatestOrders() {
-        return orderEntityRepository.findTop10ByOrderByCreatedAtDesc().stream()
-                .map(this::convertToResponse)
-                .collect(Collectors.toList());
+    private Long parseId(String raw) {
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order ID: " + raw);
+        }
     }
 }

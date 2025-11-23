@@ -1,25 +1,19 @@
 package kapil.raj.pos.io;
 
-import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.scheduling.support.SimpleTriggerContext;
 
-@Embeddable
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class PaymentDetails {
-
-    private String khaltiOrderId;
-    private String khaltiPaymentId;
-    private String khaltiSignature;
     private PaymentStatus status;
-    public enum PaymentStatus{
-        PENDING, COMPLETED, FAILED
-    }
 
+    public enum PaymentStatus {
+        PENDING,
+        COMPLETED
+    }
 }
