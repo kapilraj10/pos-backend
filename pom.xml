@@ -71,6 +71,13 @@
             <version>2.3.1</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.khalti</groupId>
+            <artifactId>checkout‑android</artifactId>
+            <version>0.07.00</version>
+        </dependency>
+
+
 
 
 
