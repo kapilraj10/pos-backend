@@ -19,7 +19,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
 import kapil.raj.pos.filter.JwtRequestFilter;
 import kapil.raj.pos.service.impl.AppUserDetailService;
@@ -38,19 +37,45 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.POST, "/login", "/encode","/orders").permitAll()
-                .requestMatchers(HttpMethod.GET, "/categories", "/items").permitAll()
-                .requestMatchers(HttpMethod.POST, "/categories", "/items").hasAuthority("ROLE_ADMIN")
-                .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
-                .anyRequest().authenticated()
-            )
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            );
+                /** Enable CORS */
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(AbstractHttpConfigurer::disable)
 
+                /** Authorization rules */
+                .authorizeHttpRequests(auth -> auth
+
+                        /** Allow CORS preflight */
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        /** Payment endpoints - allow guest checkout - MUST BE FIRST */
+                        .requestMatchers("/payments/test").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/payments/initiate", "/payments/lookup").permitAll()
+
+                        /** Public endpoints - Note: paths are relative to context-path */
+                        .requestMatchers(HttpMethod.POST, "/login", "/encode").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/categories", "/items").permitAll()
+
+                        /** Dashboard - accessible to authenticated users */
+                        .requestMatchers(HttpMethod.GET, "/dashboard").authenticated()
+
+                        /** Admin-only endpoints */
+                        .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.POST,
+                                "/categories",
+                                "/items",
+                                "/orders"
+                        ).hasAuthority("ROLE_ADMIN")
+
+                        /** All other requests */
+                        .anyRequest().authenticated()
+                )
+
+                /** Stateless JWT session */
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                );
+
+        /** JWT filter */
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -69,21 +94,30 @@ public class SecurityConfig {
         return new ProviderManager(authProvider);
     }
 
+    /** CORS configuration */
     @Bean
-    public CorsFilter corsFilter() {
-        return new CorsFilter(corsConfigurationSource());
-    }
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
 
-    private UrlBasedCorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "https://your-production-url.com"
+        ));
+
+        config.setAllowedMethods(
+                List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+        );
         config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
+
         return source;
     }
 }

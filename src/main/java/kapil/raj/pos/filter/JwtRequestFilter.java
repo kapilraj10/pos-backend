@@ -37,13 +37,32 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String method = request.getMethod();
+        String uri = request.getRequestURI();
+        
+        // Log all incoming requests for debugging
+        logger.info("📥 Incoming request: {} {}", method, uri);
+        
+        // Skip JWT processing for public payment endpoints (guest checkout)
+        if (uri.contains("/payments/initiate") || uri.contains("/payments/lookup")) {
+            logger.info("🔓 Public payment endpoint - skipping JWT authentication: {} {}", method, uri);
+            filterChain.doFilter(request, response);
+            return;
+        }
+        
+        // Skip JWT processing for public endpoints
+        if (uri.contains("/login") || uri.contains("/encode") || 
+            (method.equals("GET") && (uri.contains("/categories") || uri.contains("/items")))) {
+            logger.info("🔓 Public endpoint - skipping JWT authentication: {} {}", method, uri);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         final String authorizationHeader = request.getHeader("Authorization");
         String email = null;
         String jwt = null;
         
         // DEBUG: Log admin requests
-        String method = request.getMethod();
-        String uri = request.getRequestURI();
         if ("POST".equals(method) || "DELETE".equals(method)) {
             logger.warn("🔍 {} {} | Auth Header: {} | Content-Type: {}", 
                 method,
@@ -52,8 +71,9 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 request.getContentType());
         }
 
-        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
-            jwt = authorizationHeader.substring(7);
+        if (authorizationHeader != null && authorizationHeader.toLowerCase().startsWith("bearer ")) {
+            // Support case-insensitive Bearer prefix and trim whitespace
+            jwt = authorizationHeader.substring(authorizationHeader.indexOf(' ') + 1).trim();
             try {
                 email = jwtUtil.extractUsername(jwt);
                 logger.info(" Token valid for user: {}", email);
@@ -77,8 +97,12 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 jwt = null;
                 email = null;
             }
-        } else if (uri.contains("/admin/")) {
-            logger.error(" Admin endpoint accessed without Bearer token: {}", uri);
+        } else {
+            if (authorizationHeader != null) {
+                logger.warn(" Authorization header present but not using Bearer scheme: {}", authorizationHeader);
+            } else if (uri.contains("/admin/")) {
+                logger.error(" Admin endpoint accessed without Authorization header: {}", uri);
+            }
         }
 
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
@@ -100,6 +124,11 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                 .collect(Collectors.toList());
                         logger.info(" Authorities from DB: {}", authorities);
                     }
+
+                    // extra defensive check
+                    if (authorities.isEmpty()) {
+                        logger.warn(" No authorities found for user {} - authentication may fail", email);
+                    }
                     
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
@@ -107,7 +136,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                     logger.info(" Authentication set successfully for: {}", email);
                 } else {
-                    logger.error(" Token validation failed for: {}", email);
+                    logger.error(" Token validation failed for: {} - token may be invalid or secret key mismatch", email);
                 }
             } catch (Exception e) {
                 logger.error(" Authentication failed: {}", e.getMessage());

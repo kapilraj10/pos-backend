@@ -1,7 +1,11 @@
 package kapil.raj.pos.service.impl;
 
+import java.awt.print.Pageable;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -30,6 +34,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
+
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body cannot be null");
         }
@@ -40,7 +45,6 @@ public class OrderServiceImpl implements OrderService {
 
         PaymentMethod paymentMethod = parsePaymentMethod(request.getPaymentMethod());
 
-        // Compute subtotal if not provided
         double computedSubtotal = request.getCartItems().stream()
                 .mapToDouble(item -> item.getPrice() * item.getQuantity())
                 .sum();
@@ -49,8 +53,9 @@ public class OrderServiceImpl implements OrderService {
         Double tax = request.getTax() != null ? request.getTax() : 0.0;
         Double grandTotal = request.getGrandTotal() != null ? request.getGrandTotal() : subTotal + tax;
 
-        // Create order entity
+        // CREATE ORDER ENTITY
         OrderEntity order = OrderEntity.builder()
+                .orderId(generateOrderId())
                 .customerName(request.getCustomerName())
                 .phoneNumber(request.getPhoneNumber())
                 .subTotal(subTotal)
@@ -59,24 +64,30 @@ public class OrderServiceImpl implements OrderService {
                 .paymentMethod(paymentMethod)
                 .build();
 
-        // Payment details
+        // PAYMENT DETAILS
         PaymentDetails payment = new PaymentDetails();
         payment.setStatus(paymentMethod == PaymentMethod.CASH
                 ? PaymentDetails.PaymentStatus.COMPLETED
                 : PaymentDetails.PaymentStatus.PENDING);
         order.setPaymentDetails(payment);
 
-        // Map order items
+        // MAP ITEMS - convert cart items to entities
         List<OrderItemEntity> orderItems = request.getCartItems().stream()
                 .map(this::convertToOrderItem)
                 .collect(Collectors.toList());
+        
+        // Set bidirectional relationship - items need to know their parent order
+        for (OrderItemEntity item : orderItems) {
+            item.setOrder(order);
+        }
         order.setItems(orderItems);
 
+        // Save order with cascaded items
         order = orderEntityRepository.save(order);
-
         return convertToResponse(order);
     }
 
+    //  DELETE ORDER
     @Override
     @Transactional
     public void deleteOrder(String orderId) {
@@ -87,6 +98,7 @@ public class OrderServiceImpl implements OrderService {
         orderEntityRepository.deleteById(id);
     }
 
+    // GET LATEST ORDERS
     @Override
     @Transactional(readOnly = true)
     public List<OrderResponse> getLatestOrders() {
@@ -96,10 +108,46 @@ public class OrderServiceImpl implements OrderService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public Double sumSalesByDate(LocalDate date) {
+        LocalDateTime startDate = date.atStartOfDay();
+        LocalDateTime endDate = date.plusDays(1).atStartOfDay();
+        return orderEntityRepository.sumSalesByDate(startDate, endDate);
+    }
+
+    @Override
+    public Long countByOrderDate(LocalDate date) {
+        LocalDateTime startDate = date.atStartOfDay();
+        LocalDateTime endDate = date.plusDays(1).atStartOfDay();
+        return orderEntityRepository.countByOrderDate(startDate, endDate);
+    }
+
+    @Override
+    public Optional<OrderEntity> findRecntOrders(Pageable pageable) {
+        return Optional.empty();
+    }
+
+    @Override
+    public List<OrderResponse> findRecentOrders() {
+        // Return the top 10 most recent orders
+        return orderEntityRepository.findTop10ByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<OrderResponse> findRecentOrders(Pageable pageable) {
+        return orderEntityRepository.findRecentOrders((org.springframework.data.domain.Pageable) pageable)
+                .stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+
+    // CONVERT STRING TO ENUM
     private PaymentMethod parsePaymentMethod(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return PaymentMethod.CASH;
-        }
+        if (raw == null || raw.isBlank()) return PaymentMethod.CASH;
         try {
             return PaymentMethod.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
@@ -107,28 +155,29 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private OrderItemEntity convertToOrderItem(OrderRequest.OrderItemRequest cartItem) {
-        if (cartItem.getQuantity() <= 0 || cartItem.getPrice() < 0) {
+    // CONVERT CART ITEM TO ENTITY
+    private OrderItemEntity convertToOrderItem(OrderRequest.OrderItemRequest c) {
+        if (c.getQuantity() <= 0 || c.getPrice() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Invalid item quantity or price for item: " + cartItem.getName());
+                    "Invalid quantity or price for item: " + c.getName());
         }
         return OrderItemEntity.builder()
-                .name(cartItem.getName())
-                .quantity(cartItem.getQuantity())
-                .price(cartItem.getPrice())
+                .name(c.getName())
+                .quantity(c.getQuantity())
+                .price(c.getPrice())
                 .build();
     }
 
+    // CONVERT ENTITY TO RESPONSE
     private OrderResponse convertToResponse(OrderEntity order) {
         List<OrderResponse.OrderItemResponse> items = order.getItems() == null
                 ? List.of()
-                : order.getItems().stream()
-                .filter(Objects::nonNull)
-                .map(item -> OrderResponse.OrderItemResponse.builder()
-                        .id(item.getId())
-                        .name(item.getName())
-                        .quantity(item.getQuantity())
-                        .price(item.getPrice())
+                : order.getItems().stream().filter(Objects::nonNull)
+                .map(i -> OrderResponse.OrderItemResponse.builder()
+                        .id(i.getId())
+                        .name(i.getName())
+                        .quantity(i.getQuantity())
+                        .price(i.getPrice())
                         .build())
                 .collect(Collectors.toList());
 
@@ -139,18 +188,24 @@ public class OrderServiceImpl implements OrderService {
                 .subtotal(order.getSubTotal())
                 .tax(order.getTax())
                 .grandTotal(order.getGrandTotal())
-                .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod().name() : null)
+                .paymentMethod(order.getPaymentMethod().name())
                 .paymentDetails(order.getPaymentDetails())
                 .items(items)
                 .createdAt(order.getCreatedAt())
                 .build();
     }
 
+    // PARSE TO LONG
     private Long parseId(String raw) {
         try {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order ID: " + raw);
         }
+    }
+
+    // AUTO GENERATE ORDER ID
+    private String generateOrderId() {
+        return "ORD" + System.currentTimeMillis();
     }
 }

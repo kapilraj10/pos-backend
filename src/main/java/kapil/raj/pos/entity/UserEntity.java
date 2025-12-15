@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name="tbl_users")
 @Builder
@@ -15,19 +17,22 @@ import org.hibernate.annotations.UpdateTimestamp;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserEntity {
-    public String gerUserId;
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    
     @Column(unique = true)
     private String userId;
+    
     private String email;
     private String password;
     private String role;
     private String name;
+    
     @CreationTimestamp
     @Column(updatable = false)
-    private String createdAt;
+    private LocalDateTime createdAt;
+    
     @UpdateTimestamp
-    private String updatedAt;
+    private LocalDateTime updatedAt;
 }

@@ -34,8 +34,8 @@ public class UserServiceImpl implements UserService {
                 .name(newUser.getName())
                 .email(newUser.getEmail())
                 .userId(newUser.getUserId())
-                .createdAt(Timestamp.valueOf(newUser.getCreatedAt()))
-                .updatedAt(Timestamp.valueOf(newUser.getUpdatedAt()))
+                .createdAt(newUser.getCreatedAt() != null ? Timestamp.valueOf(newUser.getCreatedAt()) : null)
+                .updatedAt(newUser.getUpdatedAt() != null ? Timestamp.valueOf(newUser.getUpdatedAt()) : null)
                 .role(newUser.getRole())
                 .build();
     }

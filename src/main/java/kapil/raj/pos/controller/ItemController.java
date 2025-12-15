@@ -37,26 +37,30 @@ public class ItemController {
     ) {
         ObjectMapper objectMapper = new ObjectMapper();
         ItemRequest itemRequest;
+
         try {
+            // Parse JSON string to ItemRequest
             itemRequest = objectMapper.readValue(itemString, ItemRequest.class);
-
-            // Validation
-            if (itemRequest.getName() == null || itemRequest.getName().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item name is required");
-            }
-            if (itemRequest.getPrice() <= 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item price must be > 0");
-            }
-            if (itemRequest.getCategoryId() == null || itemRequest.getCategoryId().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category is required");
-            }
-
-            return itemService.add(itemRequest, file);
-
         } catch (JsonProcessingException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid JSON format in 'item'");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid JSON format in 'item'", e);
+        }
+
+        // Validation
+        if (itemRequest.getName() == null || itemRequest.getName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item name is required");
+        }
+        if (itemRequest.getPrice() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item price must be greater than 0");
+        }
+        if (itemRequest.getCategoryId() == null || itemRequest.getCategoryId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category is required");
+        }
+
+        try {
+            // Call service to add the item
+            return itemService.add(itemRequest, file);
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to add item: " + e.getMessage(), e);
         }
     }
 
