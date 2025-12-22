@@ -36,3 +36,4 @@ build/
 *.yml
 application.properties
 
+src/main/resources/.env
