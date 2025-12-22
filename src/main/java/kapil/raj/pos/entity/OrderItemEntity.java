@@ -25,6 +25,7 @@ public class OrderItemEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
+    private String itemId;
     private Integer quantity;
     private Double price;
 

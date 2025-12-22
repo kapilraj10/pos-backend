@@ -11,4 +11,6 @@ public interface ItemService {
     ItemResponse add(ItemRequest itemRequest, MultipartFile file) throws Exception;
     List<ItemResponse> fetchItems();
     void deleteItem(String itemId);
+    ItemResponse update(String itemId, ItemRequest itemRequest, MultipartFile file) throws Exception;
+    ItemResponse purchase(String itemId, int quantity);
 }

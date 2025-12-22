@@ -20,6 +20,8 @@ import kapil.raj.pos.io.OrderResponse;
 import kapil.raj.pos.io.PaymentDetails;
 import kapil.raj.pos.io.PaymentMethod;
 import kapil.raj.pos.repository.OrderEntityRepository;
+import kapil.raj.pos.repository.ItemRepository;
+import kapil.raj.pos.entity.ItemEntity;
 import kapil.raj.pos.service.OrderService;
 
 @Service
@@ -27,8 +29,11 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderEntityRepository orderEntityRepository;
 
-    public OrderServiceImpl(OrderEntityRepository orderEntityRepository) {
+    private final ItemRepository itemRepository;
+
+    public OrderServiceImpl(OrderEntityRepository orderEntityRepository, ItemRepository itemRepository) {
         this.orderEntityRepository = orderEntityRepository;
+        this.itemRepository = itemRepository;
     }
 
     @Override
@@ -161,7 +166,25 @@ public class OrderServiceImpl implements OrderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid quantity or price for item: " + c.getName());
         }
+        // If itemId is provided, decrement stock in DB
+        if (c.getItemId() != null && !c.getItemId().isBlank()) {
+            ItemEntity item = itemRepository.findByItemId(c.getItemId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item not found: " + c.getItemId()));
+            int current = item.getStock() == null ? 0 : item.getStock();
+            // If this item is low in stock, only allow one unit per order/reservation
+            if (current <= 5 && c.getQuantity() > 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Item '" + c.getName() + "' is low in stock (" + current + ") - max 1 unit allowed");
+            }
+            if (current < c.getQuantity()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient stock for item: " + c.getName());
+            }
+            item.setStock(current - c.getQuantity());
+            itemRepository.save(item);
+        }
+
         return OrderItemEntity.builder()
+                .itemId(c.getItemId())
                 .name(c.getName())
                 .quantity(c.getQuantity())
                 .price(c.getPrice())
@@ -173,12 +196,13 @@ public class OrderServiceImpl implements OrderService {
         List<OrderResponse.OrderItemResponse> items = order.getItems() == null
                 ? List.of()
                 : order.getItems().stream().filter(Objects::nonNull)
-                .map(i -> OrderResponse.OrderItemResponse.builder()
-                        .id(i.getId())
-                        .name(i.getName())
-                        .quantity(i.getQuantity())
-                        .price(i.getPrice())
-                        .build())
+        .map(i -> OrderResponse.OrderItemResponse.builder()
+            .id(i.getId())
+            .itemId(i.getItemId())
+            .name(i.getName())
+            .quantity(i.getQuantity())
+            .price(i.getPrice())
+            .build())
                 .collect(Collectors.toList());
 
         return OrderResponse.builder()

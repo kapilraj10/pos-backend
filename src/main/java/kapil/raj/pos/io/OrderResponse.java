@@ -30,6 +30,7 @@ public class OrderResponse {
     @AllArgsConstructor
     public static class OrderItemResponse {
         private Long id;
+    private String itemId;
         private String name;
         private Integer quantity;
         private Double price;

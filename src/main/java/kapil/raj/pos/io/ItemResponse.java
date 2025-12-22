@@ -10,4 +10,5 @@ public class ItemResponse {
     private String categoryId;
     private double price;
     private String imgUrl;
+    private Integer stock;
 }

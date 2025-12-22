@@ -47,4 +47,8 @@ public class ItemEntity {
     @JoinColumn(name = "category_id", nullable = false)
     @OnDelete(action = OnDeleteAction.RESTRICT)
     private CategoryEntity category;
+
+    // Inventory stock available for this item
+    @Column(nullable = false)
+    private Integer stock = 0;
 }

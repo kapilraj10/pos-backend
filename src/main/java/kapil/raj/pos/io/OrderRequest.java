@@ -26,6 +26,7 @@ public class OrderRequest {
     @AllArgsConstructor
     public static class OrderItemRequest {
         private String name;
+    private String itemId;
         private Integer quantity;
         private Double price;
     }
