@@ -102,8 +102,7 @@ public class SecurityConfig {
 
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:5173",
-                "https://pos-frontend-liart-seven.vercel.app/",
-                "https://pos-frontend-liart-seven.vercel.app/"
+                "https://pos-frontend-liart-seven.vercel.app"
         ));
 
         config.setAllowedMethods(
